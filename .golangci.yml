@@ -1,0 +1,76 @@
+---
+version: "2"
+
+run:
+  tests: false
+
+linters:
+  default: "none"
+
+  enable:
+  - "asasalint"
+  - "asciicheck"
+  - "bidichk"
+  - "bodyclose"
+  - "errcheck"
+  - "exptostd"
+  - "forbidigo"
+  - "funcorder"
+  - "gocritic"
+  - "goheader"
+  - "gosec"
+  - "govet"
+  - "ineffassign"
+  - "lll"
+  - "modernize"
+  - "nilerr"
+  - "revive"
+  - "staticcheck"
+  - "unused"
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+
+    gocritic:
+      disabled-checks:
+      # don't suggest tagged switches instead of ifs.
+      - "ifElseChain"
+
+    goheader:
+      template: |-
+        Copyright {{ YEAR }} Cunningham Research Limited
+        SPDX-License-Identifier: BSD-3-Clause
+
+        Use of this source code is governed by a BSD-style license that can be found
+        in the LICENSE file or at https://opensource.org/license/BSD-3-clause
+
+    lll:
+      line-length: 120
+
+    revive:
+      enable-default-rules: true
+      rules:
+      # many exported names match constants from other sources, such as the
+      # linux kernel.
+      - name: "var-naming"
+        disabled: true
+
+    staticcheck:
+      checks:
+      # don't suggest tagged switches instead of ifs.
+      - "-QF1003"
+
+  exclusions:
+    rules:
+    # ignore errors from defer statements.
+    - source: ".+defer.+"
+      linters: [ "errcheck", "gosec" ]
+
+    # ignore lazy Close() calls.
+    - source: ".+\\.Close()"
+      linters: [ "errcheck", "gosec" ]
+
+formatters:
+  enable:
+  - "gofumpt"

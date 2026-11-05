@@ -1,0 +1,16 @@
+{
+	"version": "0.2",
+	"language": "en",
+	"words": [
+		"genetlink",
+		"igmp",
+		"netlink",
+		"rtnetlink",
+		"rtnl",
+		"uapi",
+		"xfrm"
+	],
+	"flagWords": [
+		"netflix"
+	]
+}
