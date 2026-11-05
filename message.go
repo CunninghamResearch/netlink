@@ -72,11 +72,6 @@ type messageDecoder struct {
 // If a DONE or ERROR message type, the status code will be read and returned
 // by [MessageDecoder.Code].
 //
-// If an ERROR message type, it will automatically be unmarshaled to the
-// [Error] type and returned. The caller must check if the status code is zero
-// to check for acknowledgement messages, either by checking the code directly
-// or using the [IsACK] function.
-//
 // It will ignore any additional bytes it is given.
 func NewMessageDecoder(b []byte, order binary.ByteOrder) (MessageDecoder, error) {
 	if order == nil {
@@ -102,18 +97,7 @@ func NewMessageDecoder(b []byte, order binary.ByteOrder) (MessageDecoder, error)
 		return nil, fmt.Errorf("needed %d bytes, got %d", msg.hdr.Length, len(b))
 	}
 
-	if msg.hdr.Type == unix.NLMSG_ERROR {
-		errMsg := &Error{}
-		err := errMsg.UnmarshalBinary(b)
-		if err != nil {
-			// error reading the error message.
-			return nil, fmt.Errorf("error message: %w", err)
-		}
-
-		return nil, errMsg
-	}
-
-	if msg.hdr.Type == unix.NLMSG_DONE {
+	if msg.hdr.Type == unix.NLMSG_DONE || msg.hdr.Type == unix.NLMSG_ERROR {
 		msg.code, msg.buf, err = readErrorCode(msg.buf)
 		if err != nil {
 			return nil, fmt.Errorf("code: %w", err)
@@ -257,7 +241,8 @@ func (mr *MessageReader) Err() error {
 
 // Each is an [iter.Seq2] iterator, that will yield for each message contained
 // for the bytes given to [MessageReader], and well as the logical message
-// number. It will yield DONE and ERROR messages.
+// number. It will yield DONE messages, and ERROR messages will be unmarshaled
+// to an [Error] type.
 //
 // Each message will contain a slice of the original bytes, so message reading
 // must be completed before those bytes are reused.
@@ -277,6 +262,18 @@ func (mr *MessageReader) Each(yield func(int, MessageDecoder) bool) {
 		msg, err := NewMessageDecoder(buf, mr.order)
 		if err != nil {
 			mr.err = err
+			return
+		}
+
+		if msg.Header().Type == unix.NLMSG_ERROR {
+			dst := &Error{}
+			err := dst.UnmarshalNetlink(msg)
+			if err != nil {
+				mr.err = fmt.Errorf("error message: %w", err)
+				return
+			}
+
+			mr.err = dst
 			return
 		}
 

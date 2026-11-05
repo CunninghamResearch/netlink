@@ -7,6 +7,7 @@
 package netlink
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"testing"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestError(t *testing.T) {
-	t.Run("UnmarshalBinary", func(t *testing.T) {
+	t.Run("UnmarshalNetlink", func(t *testing.T) {
 		tests := []struct {
 			path     string
 			expected *Error
@@ -61,9 +62,14 @@ func TestError(t *testing.T) {
 					t.Fatal("could not load testdata:", err)
 				}
 
+				msg, err := NewMessageDecoder(data, binary.LittleEndian)
+				if err != nil {
+					t.Fatal("unexpected error:", err)
+				}
+
 				target := &Error{}
 
-				err = target.UnmarshalBinary(data)
+				err = target.UnmarshalNetlink(msg)
 				if test.expected == nil {
 					if err == nil {
 						t.Error("expected error")

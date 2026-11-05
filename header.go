@@ -77,16 +77,3 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 
 	return nil
 }
-
-// cutHeader splits bytes into the portion containing a Netlink header and any
-// remaining bytes, or an error; it does not validate the full body length,
-func cutHeader(b []byte) (hdr, after []byte, err error) {
-	if len(b) < headerLen {
-		err = fmt.Errorf("needed at least %d bytes, got %d", headerLen, len(b))
-		return
-	}
-
-	hdr = b[:headerLen]
-	after = b[headerLen:]
-	return
-}

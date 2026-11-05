@@ -10,15 +10,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
 )
-
-// errMsgLen is the minimum length of an ERROR message, which comprises of
-// at least the message header, error code and original message header.
-const errMsgLen = 32
 
 // Error is a Netlink ERROR message, returned when a request fails to
 // describe the error and the request that caused it.
@@ -26,7 +23,7 @@ const errMsgLen = 32
 // Not all fields will be set depending on the family implementation and if it
 // supports Extended ACKs.
 type Error struct {
-	// Code is the [syscall.Errno] error code.
+	// Code is the [unix.Errno] error code.
 	Code int
 
 	// Interrupted is set if this error is the result of a dump operation being
@@ -104,6 +101,9 @@ func (e *Error) Error() string {
 // UnmarshalAttributes unmarshals the optional extended ack attributes from a
 // DONE or ERROR message.
 func (e *Error) UnmarshalAttributes(attrs *AttributeDecoder) error {
+	// always used native endian when decoding extended error attributes.
+	attrs.order = binary.NativeEndian
+
 	for attr := range attrs.Each {
 		switch attr.Type() {
 		case unix.NLMSGERR_ATTR_MSG:
@@ -130,6 +130,40 @@ func (e *Error) UnmarshalAttributes(attrs *AttributeDecoder) error {
 	return nil
 }
 
+// UnmarshalNetlink unmarshals an [Error] from a Netlink message.
+func (e *Error) UnmarshalNetlink(msg MessageDecoder) error {
+	e.Code = msg.Code()
+	e.Interrupted = msg.Header().Flags&unix.NLM_F_DUMP_INTR != 0
+
+	b := make([]byte, 16)
+	if _, err := io.ReadFull(msg, b); err != nil {
+		return fmt.Errorf("original header: %w", err)
+	}
+
+	err := e.Original.UnmarshalBinary(b)
+	if err != nil {
+		return fmt.Errorf("original header: %w", err)
+	}
+
+	if msg.Header().Flags&unix.NLM_F_CAPPED == 0 {
+		// error contains the original body, discard.
+		_, err := io.Copy(io.Discard, io.LimitReader(msg, int64(e.Original.Length-16)))
+		if err != nil {
+			return fmt.Errorf("could not discard original body: %w", err)
+		}
+	}
+
+	if msg.Header().Flags&unix.NLM_F_ACK_TLVS != 0 {
+		// error contains an extended acknowledgement.
+		err := msg.Unmarshal(e)
+		if err != nil {
+			return fmt.Errorf("extended ack: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // readErrorCode reads the code from an error message, and returns any
 // remaining bytes.
 func readErrorCode(b []byte) (code int, rest []byte, err error) {
@@ -145,68 +179,6 @@ func readErrorCode(b []byte) (code int, rest []byte, err error) {
 	rest = b[4:]
 
 	return
-}
-
-// UnmarshalBinary unmarshals a Netlink message from bytes containing the
-// ERROR message type.
-//
-// An error is returned if the message does not contain the ERROR type
-// message.
-//
-// It will ignore any additional bytes it is given.
-func (e *Error) UnmarshalBinary(b []byte) error {
-	if len(b) < errMsgLen {
-		return fmt.Errorf("needed at least %d bytes, got %d", errMsgLen, len(b))
-	}
-
-	hdr := Header{}
-	err := hdr.UnmarshalBinary(b)
-	if err != nil {
-		return fmt.Errorf("header: %w", err)
-	}
-
-	if hdr.Type != unix.NLMSG_ERROR {
-		return fmt.Errorf("message is not an ERROR type message")
-	}
-
-	e.Interrupted = hdr.Flags&unix.NLM_F_DUMP_FILTERED != 0
-
-	e.Code, b, err = readErrorCode(b[headerLen:])
-	if err != nil {
-		return fmt.Errorf("error code: %w", err)
-	}
-
-	// unmarshal original message header.
-	err = e.Original.UnmarshalBinary(b)
-	if err != nil {
-		return fmt.Errorf("original header: %w", err)
-	}
-
-	if hdr.Flags&unix.NLM_F_CAPPED != 0 {
-		// CAPPED flag is set, discard the original header.
-		_, b, err = cutHeader(b)
-		if err != nil {
-			return fmt.Errorf("original header: %w", err)
-		}
-	} else {
-		// CAPPED flag is not set, discard the original header and body.
-		_, b, err = cutMessage(b)
-		if err != nil {
-			return fmt.Errorf("original message: %w", err)
-		}
-	}
-
-	if hdr.Flags&unix.NLM_F_ACK_TLVS != 0 {
-		// ACK_TLVS flag is set, body contains Extended ACK attributes.
-		attrs := &AttributeDecoder{buf: b}
-
-		err = attrs.Unmarshal(e)
-		if err != nil {
-			return fmt.Errorf("extended ack: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // Unwrap the [Error] into a [unix.Errno] configured by [Error.Code] for
