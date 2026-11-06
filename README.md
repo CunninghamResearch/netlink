@@ -30,3 +30,16 @@ go get go.crhq.io/netlink/genetlink
 ```
 
 Package `genetlink` implements a wrapper around the Netlink client for the Generic Netlink protocol, which supports dynamic registration of servers.
+
+
+### wireguard
+
+[![Go Reference](https://pkg.go.dev/badge/go.crhq.io/netlink/wireguard.svg)](https://pkg.go.dev/go.crhq.io/netlink/wireguard)
+
+```sh
+go get go.crhq.io/netlink/wireguard
+```
+
+Package `wireguard` implements the Generic Netlink protocol for interacting with a Wireguard secure tunnel device.
+
+See [wireguard/README.md](wireguard/README.md) for usage examples.
