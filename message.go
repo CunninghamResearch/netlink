@@ -94,14 +94,17 @@ func NewMessageDecoder(b []byte, order binary.ByteOrder) (MessageDecoder, error)
 	}
 
 	if msg.hdr.Length > len(b) {
-		return nil, fmt.Errorf("needed %d bytes, got %d", msg.hdr.Length, len(b))
+		return nil, fmt.Errorf("short message: needed %d bytes, got %d", msg.hdr.Length, len(b))
 	}
 
 	if msg.hdr.Type == unix.NLMSG_DONE || msg.hdr.Type == unix.NLMSG_ERROR {
-		msg.code, msg.buf, err = readErrorCode(msg.buf)
-		if err != nil {
-			return nil, fmt.Errorf("code: %w", err)
+		if len(msg.buf) < 4 {
+			return nil, fmt.Errorf("code: needed 4 bytes, got %d", len(msg.buf))
 		}
+
+		// error code is a negative syscall errno, decode and negate it.
+		msg.code = int(-int32(binary.NativeEndian.Uint32(msg.buf))) //nolint
+		msg.i = 4
 	}
 
 	return msg, nil
@@ -139,6 +142,25 @@ func (md *messageDecoder) Unmarshal(dst AttributeUnmarshaler) error {
 	}
 
 	return nil
+}
+
+// Discard n bytes from a [MessageDecoder] body, such as a family-specific
+// intermediate header that the caller is uninterested in.
+//
+// If there are not enough bytes to discard, [io.EOF] is returned.
+func Discard(msg MessageDecoder, n int) error {
+	// fast path for internal message decoder.
+	if md, ok := msg.(*messageDecoder); ok {
+		if md.i+n > len(md.buf) {
+			return io.EOF
+		}
+
+		md.i += n
+		return nil
+	}
+
+	_, err := io.Copy(io.Discard, io.LimitReader(msg, int64(n)))
+	return err
 }
 
 // MessageEncoder is used to build the intermediate family-specific headers and

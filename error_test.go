@@ -26,12 +26,18 @@ func TestError(t *testing.T) {
 				"testdata/errors/operation_not_permitted",
 				&Error{
 					Code: 1,
-					Original: Header{
-						Length: 28,
-						Type:   30,
-						Flags:  unix.NLM_F_REQUEST | unix.NLM_F_DUMP,
-						Seq:    2,
-						Pid:    350279,
+					Original: ErrorMessage{
+						Header: Header{
+							Length: 28,
+							Type:   30,
+							Flags:  unix.NLM_F_REQUEST | unix.NLM_F_DUMP,
+							Seq:    2,
+							Pid:    350279,
+						},
+						Body: []byte{
+							0x00, 0x01, 0x00, 0x00, 0x08, 0x00, 0x02, 0x00,
+							0x77, 0x67, 0x30, 0x00,
+						},
 					},
 				},
 			},
@@ -39,12 +45,25 @@ func TestError(t *testing.T) {
 				"testdata/errors/ext_invalid_argument",
 				&Error{
 					Code: 22,
-					Original: Header{
-						Length: 88,
-						Type:   30,
-						Flags:  unix.NLM_F_REQUEST | unix.NLM_F_ACK,
-						Seq:    2,
-						Pid:    554099,
+					Original: ErrorMessage{
+						Header: Header{
+							Length: 88,
+							Type:   30,
+							Flags:  unix.NLM_F_REQUEST | unix.NLM_F_ACK,
+							Seq:    2,
+							Pid:    554099,
+						},
+						Body: []byte{
+							0x01, 0x01, 0x00, 0x00, 0x08, 0x00, 0x02, 0x00,
+							0x77, 0x67, 0x30, 0x00, 0x3c, 0x00, 0x08, 0x00,
+							0x38, 0x00, 0x00, 0x00, 0x24, 0x00, 0x01, 0x00,
+							0x9d, 0x9d, 0xbc, 0x00, 0x5a, 0x2e, 0xb8, 0x3b,
+							0xca, 0xf3, 0x3e, 0xd5, 0x02, 0x0a, 0xe5, 0x91,
+							0x13, 0x2d, 0xaa, 0x6e, 0x84, 0x3a, 0xe1, 0x78,
+							0xee, 0x86, 0x56, 0x85, 0x5f, 0xf2, 0x39, 0x3f,
+							0x06, 0x00, 0x05, 0x00, 0x1e, 0x00, 0x00, 0x00,
+							0x08, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x00,
+						},
 					},
 					Message: "NLA_F_NESTED is missing",
 					Offset:  28,

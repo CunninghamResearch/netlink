@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 
@@ -32,9 +31,9 @@ type Error struct {
 	// When set, it means any results read may be truncated or inconsistent.
 	Interrupted bool
 
-	// Original is the message header from the original message that caused the
-	// error.
-	Original Header
+	// Original is the original message header, and optionally body, of the
+	// message that triggered the error.
+	Original ErrorMessage
 
 	// Message is a human-readable description of the error encountered,
 	Message string
@@ -135,22 +134,9 @@ func (e *Error) UnmarshalNetlink(msg MessageDecoder) error {
 	e.Code = msg.Code()
 	e.Interrupted = msg.Header().Flags&unix.NLM_F_DUMP_INTR != 0
 
-	b := make([]byte, 16)
-	if _, err := io.ReadFull(msg, b); err != nil {
-		return fmt.Errorf("original header: %w", err)
-	}
-
-	err := e.Original.UnmarshalBinary(b)
+	err := e.Original.UnmarshalNetlink(msg)
 	if err != nil {
-		return fmt.Errorf("original header: %w", err)
-	}
-
-	if msg.Header().Flags&unix.NLM_F_CAPPED == 0 {
-		// error contains the original body, discard.
-		_, err := io.Copy(io.Discard, io.LimitReader(msg, int64(e.Original.Length-16)))
-		if err != nil {
-			return fmt.Errorf("could not discard original body: %w", err)
-		}
+		return fmt.Errorf("original: %w", err)
 	}
 
 	if msg.Header().Flags&unix.NLM_F_ACK_TLVS != 0 {
@@ -164,27 +150,62 @@ func (e *Error) UnmarshalNetlink(msg MessageDecoder) error {
 	return nil
 }
 
-// readErrorCode reads the code from an error message, and returns any
-// remaining bytes.
-func readErrorCode(b []byte) (code int, rest []byte, err error) {
-	if len(b) < 4 {
-		err = fmt.Errorf("needed 4 bytes, got %d", len(b))
-		return
-	}
-
-	// error code is a negative syscall errno, decode and negate it.
-	code = int(-int32(binary.NativeEndian.Uint32(b))) //nolint
-
-	// trim error code and return.
-	rest = b[4:]
-
-	return
-}
-
 // Unwrap the [Error] into a [unix.Errno] configured by [Error.Code] for
 // checking with [errors.Is].
 func (e *Error) Unwrap() error {
 	return unix.Errno(e.Code)
+}
+
+// ErrorMessage contains the original message header, and optionally message
+// body, sent as part of an [Error] message.
+type ErrorMessage struct {
+	// Header is the original message header.
+	Header Header
+
+	// Body is the original message body, if the CAPPED flag is not set.
+	//
+	// Note: this may be a slice of a shared buffer, so should not be modified
+	// or copies should be taken rather than direct references.
+	Body []byte
+}
+
+// UnmarshalNetlink unmarshals the original header and message body from an
+// error message.
+func (em *ErrorMessage) UnmarshalNetlink(msg MessageDecoder) error {
+	data := msg.Data()
+	if len(data) < 20 {
+		return fmt.Errorf("needed at least 20 bytes, got %d", len(data))
+	}
+
+	// skip code, already read by [Error.UnmarshalNetlink].
+	data = data[4:]
+
+	err := em.Header.UnmarshalBinary(data)
+	if err != nil {
+		return fmt.Errorf("header: %w", err)
+	}
+
+	if msg.Header().Flags&unix.NLM_F_CAPPED == 0 {
+		// capped flag not set, error contains original message.
+		if len(data) < em.Header.Length {
+			return fmt.Errorf("body: needed %d bytes, got %d", em.Header.Length, len(data))
+		}
+
+		em.Body = data[headerLen:em.Header.Length]
+
+		err := Discard(msg, em.Header.Length)
+		if err != nil {
+			return fmt.Errorf("discard body: %w", err)
+		}
+	} else {
+		// capped flag set, error contains only original header.
+		err := Discard(msg, headerLen)
+		if err != nil {
+			return fmt.Errorf("discard header: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // Policy configures the validation of an attribute.
