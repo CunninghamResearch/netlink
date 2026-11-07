@@ -45,6 +45,10 @@ linters:
         Use of this source code is governed by a BSD-style license that can be found
         in the LICENSE file or at https://opensource.org/license/BSD-3-clause
 
+    gosec:
+      excludes:
+      - "G404" # weak random number generator.
+
     lll:
       line-length: 120
 

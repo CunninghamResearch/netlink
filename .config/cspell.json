@@ -4,7 +4,9 @@
 	"words": [
 		"genetlink",
 		"igmp",
+		"netfilter",
 		"netlink",
+		"nftables",
 		"rtnetlink",
 		"rtnl",
 		"uapi",

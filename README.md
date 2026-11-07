@@ -32,6 +32,17 @@ go get go.crhq.io/netlink/genetlink
 Package `genetlink` implements a wrapper around the Netlink client for the Generic Netlink protocol, which supports dynamic registration of servers.
 
 
+### nftables
+
+[![Go Reference](https://pkg.go.dev/badge/go.crhq.io/netlink/nftables.svg)](https://pkg.go.dev/go.crhq.io/netlink/nftables)
+
+```sh
+go get go.crhq.io/netlink/nftables
+```
+
+Package `nftables` contains a client for the netfilter nftables firewall, with support for atomic configuration.
+
+
 ### wireguard
 
 [![Go Reference](https://pkg.go.dev/badge/go.crhq.io/netlink/wireguard.svg)](https://pkg.go.dev/go.crhq.io/netlink/wireguard)
