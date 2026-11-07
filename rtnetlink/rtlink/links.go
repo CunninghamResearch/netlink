@@ -38,14 +38,12 @@ type DeviceSlave interface {
 	SlaveKind() string
 }
 
-// genericDevice is a [Device] that only contains it's kind and takes no
-// further attributes, for use with [Client.LinkAdd].
 type genericDevice struct {
 	kind string
 }
 
 // Generic initializes a generic [Device] for device types that take no further
-// configuration outside the general-purpose [LinkOption].
+// configuration outside the general-purpose [Option].
 func Generic(kind string) Device {
 	return &genericDevice{kind: kind}
 }
@@ -69,7 +67,7 @@ type BareUDP struct {
 	MultiProto bool
 }
 
-// DeviceKind returns `bareudp`.
+// DeviceKind returns "bareudp".
 func (BareUDP) DeviceKind() string {
 	return "bareudp"
 }
@@ -110,7 +108,7 @@ func (b *BareUDP) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 	return nil
 }
 
-// VLAN is the [LinkInfo.Data] for a 802.1Q Virtual LAN device.
+// VLAN is the [Info.Data] for a 802.1Q Virtual LAN device.
 //
 // References:
 //   - linux/net/8021q/vlan_netlink.c
@@ -118,24 +116,76 @@ func (b *BareUDP) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 type VLAN struct {
 	ID       uint16
 	Flags    VLANFlags
-	Egress   []*VLANQOS
-	Ingress  []*VLANQOS
-	Protocol uint16
+	Mask     VLANFlags
+	Egress   []VLANQOS
+	Ingress  []VLANQOS
+	Protocol VLANProtocol
 }
 
-// DeviceKind returns `vlan`.
+// DeviceKind returns "vlan".
 func (VLAN) DeviceKind() string {
 	return "vlan"
 }
 
 // MarshalAttributes marshals the IFLA_INFO_DATA attributes for a [VLAN] device
 // type.
-func (VLAN) MarshalAttributes(_ *netlink.AttributeEncoder) error {
-	return fmt.Errorf("vlan devices cannot be configured yet")
+func (v VLAN) MarshalAttributes(attrs *netlink.AttributeEncoder) error {
+	attrs.Uint16(unix.IFLA_VLAN_ID, v.ID)
+
+	if v.Flags != 0 {
+		if v.Mask == 0 {
+			// create mask not set, set to flags if given.
+			v.Mask = v.Flags
+		}
+
+		b := make([]byte, 8)
+		binary.NativeEndian.PutUint32(b, uint32(v.Flags))
+		binary.NativeEndian.PutUint32(b[4:], uint32(v.Mask))
+
+		if err := attrs.Bytes(unix.IFLA_VLAN_FLAGS, b); err != nil {
+			return fmt.Errorf("flags: %w", err)
+		}
+	}
+
+	if len(v.Egress) != 0 {
+		err := attrs.Nest(unix.IFLA_VLAN_EGRESS_QOS, func(attrs *netlink.AttributeEncoder) error {
+			for i, egress := range v.Egress {
+				if err := attrs.MarshalBytes(unix.IFLA_VLAN_QOS_MAPPING, egress); err != nil {
+					return fmt.Errorf("egress %d: %w", i, err)
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(v.Ingress) != 0 {
+		err := attrs.Nest(unix.IFLA_VLAN_INGRESS_QOS, func(attrs *netlink.AttributeEncoder) error {
+			for i, ingress := range v.Ingress {
+				if err := attrs.MarshalBytes(unix.IFLA_VLAN_QOS_MAPPING, ingress); err != nil {
+					return fmt.Errorf("ingress %d: %w", i, err)
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	if v.Protocol != 0 {
+		attrs.Uint16(unix.IFLA_VLAN_PROTOCOL, v.Protocol)
+	}
+
+	return nil
 }
 
 // UnmarshalAttributes unmarshals the attributes for a [VLAN] from inside a
-// [Link.Info].
+// [Info].
 func (v *VLAN) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 	for attr := range attrs.Each {
 		switch attr.Type() {
@@ -143,15 +193,18 @@ func (v *VLAN) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 			v.ID = attr.Uint16()
 
 		case unix.IFLA_VLAN_FLAGS:
-			// IFLA_VLAN_FLAGS is actually a struct containing the flags and a
-			// change mask, however the latter is only used during
-			// configuration, so it can safely be ignored here.
-			v.Flags = VLANFlags(attr.Uint32())
+			b := attr.Bytes()
+			if len(b) != 8 {
+				return fmt.Errorf("flags: needed 8 bytes, got %d", len(b))
+			}
+
+			v.Flags = VLANFlags(binary.NativeEndian.Uint32(b))
+			v.Mask = VLANFlags(binary.NativeEndian.Uint32(b[4:]))
 
 		case unix.IFLA_VLAN_EGRESS_QOS:
 			for nested := range attr.Each {
-				qos := new(VLANQOS)
-				err := nested.UnmarshalBytes(qos)
+				qos := VLANQOS{}
+				err := nested.UnmarshalBytes(&qos)
 				if err != nil {
 					return fmt.Errorf("egress qos: %w", err)
 				}
@@ -161,8 +214,8 @@ func (v *VLAN) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 
 		case unix.IFLA_VLAN_INGRESS_QOS:
 			for nested := range attr.Each {
-				qos := new(VLANQOS)
-				err := nested.UnmarshalBytes(qos)
+				qos := VLANQOS{}
+				err := nested.UnmarshalBytes(&qos)
 				if err != nil {
 					return fmt.Errorf("ingress qos: %w", err)
 				}
@@ -171,7 +224,7 @@ func (v *VLAN) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 			}
 
 		case unix.IFLA_VLAN_PROTOCOL:
-			v.Protocol = attr.Uint16()
+			v.Protocol = VLANProtocol(attr.Uint16())
 		}
 	}
 
@@ -222,6 +275,34 @@ func (v VLANFlags) String() string {
 	}
 
 	return ""
+}
+
+// VLANProtocol is the protocol standard used by a [VLAN] link.
+//
+// References:
+//   - https://www.kernel.org/doc/html/latest/netlink/specs/rt-link.html#vlan-protocols
+type VLANProtocol uint16
+
+// Constants for [VLANProtocol].
+//
+// Note: these are network byteorder.
+const (
+	VLAN8021q  VLANProtocol = 0x0081
+	VLAN8021ad VLANProtocol = 0xA888
+)
+
+func (v VLANProtocol) String() string {
+	switch v {
+	case 0:
+		return "none"
+	case VLAN8021q:
+		return "802.1q"
+	case VLAN8021ad:
+		return "802.1ad"
+
+	default:
+		return "unknown"
+	}
 }
 
 // VLANQOS configures the Quality of Service for a [VLAN] on egress or ingress.

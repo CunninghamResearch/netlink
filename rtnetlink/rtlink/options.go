@@ -31,6 +31,7 @@ type configure struct {
 	broadcast net.HardwareAddr
 	name      *string
 	mtu       *uint32
+	link      *uint32
 	master    *uint32
 	txQlen    *uint32
 	weight    *uint32
@@ -97,6 +98,37 @@ func SetFlags(flags Flags) Option {
 	return func(link *configure) error {
 		link.info.Flags |= flags
 		link.info.Flags |= flags
+		return nil
+	}
+}
+
+// SetDevice is an [Option] to apply additional link-specific configuration
+// after it is created.
+//
+// It cannot be used to change the link type.
+func SetDevice(dev Device) Option {
+	return func(link *configure) error {
+		if dev == nil {
+			return fmt.Errorf("device configuration cannot be nil")
+		}
+
+		link.linkInfo = &Info{
+			Kind: dev.DeviceKind(),
+			Data: dev,
+		}
+
+		return nil
+	}
+}
+
+// SetLink is an [Option] to configure the parent link by index of a [Link].
+func SetLink(index int) Option {
+	return func(link *configure) error {
+		if index < 0 || index > math.MaxUint32 {
+			return fmt.Errorf("index exceeds uint32, got %d", index)
+		}
+
+		link.link = new(uint32(index))
 		return nil
 	}
 }
@@ -234,6 +266,10 @@ func (c *configure) MarshalAttributes(attrs *netlink.AttributeEncoder) error {
 
 	if c.mtu != nil {
 		attrs.Uint32(unix.IFLA_MTU, *c.mtu)
+	}
+
+	if c.link != nil {
+		attrs.Uint32(unix.IFLA_LINK, *c.link)
 	}
 
 	if c.master != nil {
