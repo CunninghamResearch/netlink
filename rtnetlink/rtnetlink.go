@@ -40,6 +40,11 @@ func New() (*Client, error) {
 	return &Client{nl: nl}, nil
 }
 
+// Close the rtnetlink client.
+func (c *Client) Close() error {
+	return c.nl.Close()
+}
+
 // Addrs retrieves a list of all the [rtaddr.Addr] associated with a link.
 //
 // Equivalent: ip addr
