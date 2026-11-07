@@ -7,8 +7,12 @@
 		"netfilter",
 		"netlink",
 		"nftables",
+		"rtaddr",
+		"rtlink",
+		"rtneigh",
 		"rtnetlink",
 		"rtnl",
+		"rtroute",
 		"uapi",
 		"xfrm"
 	],

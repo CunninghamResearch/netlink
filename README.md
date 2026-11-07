@@ -43,6 +43,17 @@ go get go.crhq.io/netlink/nftables
 Package `nftables` contains a client for the netfilter nftables firewall, with support for atomic configuration.
 
 
+### nftables
+
+[![Go Reference](https://pkg.go.dev/badge/go.crhq.io/netlink/rtnetlink.svg)](https://pkg.go.dev/go.crhq.io/netlink/rtnetlink)
+
+```sh
+go get go.crhq.io/netlink/rtnetlink
+```
+
+Package `rtnetlink` contains a client for managing the systems addresses, links, neighbors and routes through the Linux Kernel [rtnetlink](https://man7.org/linux/man-pages/man7/rtnetlink.7.html) protocol.
+
+
 ### wireguard
 
 [![Go Reference](https://pkg.go.dev/badge/go.crhq.io/netlink/wireguard.svg)](https://pkg.go.dev/go.crhq.io/netlink/wireguard)
