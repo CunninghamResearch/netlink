@@ -48,61 +48,48 @@ func (c *Client) Close() error {
 
 // Addrs retrieves a list of all the [rtaddr.Addr] associated with a link.
 //
-// Equivalent: ip addr
+// Equivalent: ip addr show <link>
 func (c *Client) Addrs(index int) (rtaddr.Addrs, error) {
 	return rtaddr.List(c.nl, index)
 }
 
-// AddrAdd is used to create and configure a new [rtaddr.Addr] for a link.
-//
-// It must be given at least [rtaddr.SetAddress] and optionally further
-// [rtaddr.Option] to configure the address.
+// AddrAdd is used to create and configure a new [rtaddr.Addr].
 //
 // If the address already exists, [rtaddr.ErrExists] is returned. If the link
 // does not exist, [rtlink.ErrNotFound] is returned.
 //
 // Equivalent: ip addr add
-func (c *Client) AddrAdd(index int, opts ...rtaddr.Option) error {
-	return rtaddr.Add(c.nl, index, opts...)
+func (c *Client) AddrAdd(addr *rtaddr.Addr) error {
+	return rtaddr.Add(c.nl, addr)
 }
 
-// AddrChange is used to change the configuration of an [rtaddr.Addr] for a
-// link, using the same [rtaddr.Option] used to create it, only if it already
-// exists.
-//
-// It must be given at least [rtaddr.SetAddress] and optionally further
-// [rtaddr.Option] to configure the address.
+// AddrChange is used to change the configuration of an [rtaddr.Addr], using
+// the same configuration used to create it, only if it already exists.
 //
 // If the address does not exist, [rtaddr.ErrNotFound] is returned.
 //
 // Equivalent: ip addr change
-func (c *Client) AddrChange(index int, opts ...rtaddr.Option) error {
-	return rtaddr.Change(c.nl, index, opts...)
+func (c *Client) AddrChange(addr *rtaddr.Addr) error {
+	return rtaddr.Change(c.nl, addr)
 }
 
-// AddrDelete is used to remove an [rtaddr.Addr] for a link, using the same
-// [rtaddr.Option] used to create it.
-//
-// It must be given at least [rtaddr.SetAddress] and optionally further
-// [rtaddr.Option] to configure the address.
+// AddrDelete is used to remove an [rtaddr.Addr] using the same configuration
+// used to create it.
 //
 // If the address does not exist, [rtaddr.ErrNotFound] is returned.
 //
 // Equivalent: ip addr delete
-func (c *Client) AddrDelete(index int, opts ...rtaddr.Option) error {
-	return rtaddr.Delete(c.nl, index, opts...)
+func (c *Client) AddrDelete(addr *rtaddr.Addr) error {
+	return rtaddr.Delete(c.nl, addr)
 }
 
 // AddrReplace is used to create or change the configuration of an
-// [rtaddr.Addr] for a link, using the same [rtaddr.Option] used to create it,
-// creating it if it does not exist.
-//
-// It must be given at least [rtaddr.SetAddress] and optionally further
-// [rtaddr.Option] to configure the address.
+// [rtaddr.Addr], using the same configuration used to create it, creating it
+// if it does not exist.
 //
 // Equivalent: ip addr replace
-func (c *Client) AddrReplace(index int, opts ...rtaddr.Option) error {
-	return rtaddr.Replace(c.nl, index, opts...)
+func (c *Client) AddrReplace(addr *rtaddr.Addr) error {
+	return rtaddr.Replace(c.nl, addr)
 }
 
 // Links retrieves a list of all the [rtlink.Link] recognized by the system,

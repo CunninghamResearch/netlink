@@ -32,9 +32,6 @@ import (
 //   - linux/include/uapi/linux/if_addr.h
 //   - https://www.kernel.org/doc/html/latest/netlink/specs/rt-addr.html#addr-attrs
 type Addr struct {
-	MsgType       uint16
-	Family        uint8
-	PrefixLen     uint8
 	Scope         rtroute.Scope
 	Link          int
 	Address       netip.Prefix
@@ -47,11 +44,14 @@ type Addr struct {
 	RtPriority    uint32
 	TargetNetNsID uint32
 	Proto         Proto
+
+	msg    uint16
+	prefix int
 }
 
 // MessageType returns "NewAddr" or "DelAddr" based on rtnetlink message type.
-func (a *Addr) MessageType() string {
-	switch a.MsgType {
+func (a Addr) MessageType() string {
+	switch a.msg {
 	case unix.RTM_DELADDR:
 		return "DelAddr"
 	default:
@@ -59,7 +59,88 @@ func (a *Addr) MessageType() string {
 	}
 }
 
-var zeroAddr netip.Addr
+// MarshalAttributes marshals the Netlink attributes of [Addr].
+func (a Addr) MarshalAttributes(attrs *netlink.AttributeEncoder) error {
+	if a.Address.IsValid() {
+		attrs.Addr(unix.IFA_ADDRESS, a.Address.Addr())
+	}
+
+	if a.Local.IsValid() {
+		attrs.Addr(unix.IFA_LOCAL, a.Local)
+	} else {
+		attrs.Addr(unix.IFA_LOCAL, a.Address.Addr())
+	}
+
+	if err := attrs.String(unix.IFA_LABEL, a.Label); err != nil {
+		return fmt.Errorf("label: %w", err)
+	}
+
+	if a.Broadcast.IsValid() {
+		attrs.Addr(unix.IFA_BROADCAST, a.Broadcast)
+	}
+
+	if a.Anycast.IsValid() {
+		attrs.Addr(unix.IFA_ANYCAST, a.Anycast)
+	}
+
+	if err := attrs.MarshalBytes(unix.IFA_CACHEINFO, a.CacheInfo); err != nil {
+		return fmt.Errorf("cache info: %w", err)
+	}
+
+	if a.Flags != 0 {
+		attrs.Uint32(unix.IFA_FLAGS, a.Flags)
+	}
+
+	if a.RtPriority != 0 {
+		attrs.Uint32(unix.IFA_RT_PRIORITY, a.RtPriority)
+	}
+
+	if a.TargetNetNsID != 0 {
+		attrs.Uint32(unix.IFA_TARGET_NETNSID, a.TargetNetNsID)
+	}
+
+	if a.Proto != 0 {
+		attrs.Uint8(11, a.Proto)
+	}
+
+	return nil
+}
+
+// MarshalNetlink marshals an [Addr] to a Netlink message.
+func (a Addr) MarshalNetlink(msg netlink.MessageEncoder) error {
+	info := ifAddrMsg{
+		Scope: a.Scope,
+		Link:  a.Link,
+	}
+
+	if a.Address.IsValid() {
+		if a.Address.Addr().Is6() {
+			info.Family = unix.AF_INET6
+		} else {
+			info.Family = unix.AF_INET
+		}
+
+		info.PrefixLen = uint8(a.Address.Bits()) //nolint
+	} else {
+		if a.Local.Is6() {
+			info.Family = unix.AF_INET6
+		} else {
+			info.Family = unix.AF_INET
+		}
+	}
+
+	err := info.write(msg)
+	if err != nil {
+		return fmt.Errorf("ifinfomsg: %w", err)
+	}
+
+	err = msg.Marshal(a)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // UnmarshalAttributes unmarshals the Netlink message attributes for an [Addr].
 func (a *Addr) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
@@ -68,7 +149,7 @@ func (a *Addr) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 		case unix.IFA_ADDRESS:
 			ip, ok := attr.Addr()
 			if ok {
-				a.Address = netip.PrefixFrom(ip, int(a.PrefixLen))
+				a.Address = netip.PrefixFrom(ip, a.prefix)
 			}
 		case unix.IFA_LOCAL:
 			a.Local, _ = attr.Addr()
@@ -95,7 +176,7 @@ func (a *Addr) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 	}
 
 	// set local address when not a point-to-point interface.
-	if a.Local == zeroAddr {
+	if !a.Local.IsValid() {
 		a.Local = a.Address.Addr()
 	}
 
@@ -104,7 +185,7 @@ func (a *Addr) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 
 // UnmarshalNetlink unmarshals a Netlink message containing an [Addr].
 func (a *Addr) UnmarshalNetlink(msg netlink.MessageDecoder) error {
-	a.MsgType = msg.Header().Type
+	a.msg = msg.Header().Type
 
 	info := ifAddrMsg{}
 	err := info.read(msg)
@@ -112,8 +193,7 @@ func (a *Addr) UnmarshalNetlink(msg netlink.MessageDecoder) error {
 		return fmt.Errorf("ifinfomsg: %w", err)
 	}
 
-	a.Family = info.Family
-	a.PrefixLen = info.PrefixLen
+	a.prefix = int(info.PrefixLen)
 	a.Scope = info.Scope
 	a.Link = info.Link
 
