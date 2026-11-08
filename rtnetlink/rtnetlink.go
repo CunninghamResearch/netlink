@@ -158,42 +158,39 @@ func (c *Client) Routes(family uint8, table rtroute.Table) (rtroute.Routes, erro
 	return rtroute.List(c.nl, family, table)
 }
 
-// RouteAdd is used to add an [rt.routeRoute] to a routing table, configured
-// with one or more [rtroute.Option].
+// RouteAdd is used to add an [rtroute.Route] to a routing table.
 //
-// If it already exists, [rtroute.ErrExists] is returned.
+// If it already exists, [ErrExists] is returned.
 //
 // Equivalent: ip route add
-func (c *Client) RouteAdd(table rtroute.Table, opts ...rtroute.Option) error {
-	return rtroute.Add(c.nl, table, opts...)
+func (c *Client) RouteAdd(route *rtroute.Route) error {
+	return rtroute.Add(c.nl, route)
 }
 
 // RouteChange is used to replace an existing [rtroute.Route] in a routing
-// table, configured with one or more [rtroute.Option] equivalent to the
-// options that would create it.
+// table, using the same configuration that would create it.
 //
 // Equivalent: ip route change
-func (c *Client) RouteChange(table rtroute.Table, opts ...rtroute.Option) error {
-	return rtroute.Change(c.nl, table, opts...)
+func (c *Client) RouteChange(route *rtroute.Route) error {
+	return rtroute.Change(c.nl, route)
 }
 
-// RouteDelete removes an [rtroute.Route] from a routing table, specified by
-// the [rtroute.Option] used to create it.
+// RouteDelete removes an [rtroute.Route] from a routing table, using the same
+// configuration that would create it.
 //
-// If it does not exist, [rtroute.ErrNotFound] is returned.
+// If it does not exist, [ErrNotFound] is returned.
 //
 // Equivalent: ip route delete
-func (c *Client) RouteDelete(table rtroute.Table, opts ...rtroute.Option) error {
-	return rtroute.Delete(c.nl, table, opts...)
+func (c *Client) RouteDelete(route *rtroute.Route) error {
+	return rtroute.Delete(c.nl, route)
 }
 
 // RouteReplace is used to add a new or replace an existing [rtroute.Route] to
-// a routing table, configured with one or more [rtroute.Option] equivalent to
-// the options that would create it.
+// a routing table, using the same configuration that would create it.
 //
 // Equivalent: ip route replace
-func (c *Client) RouteReplace(table rtroute.Table, opts ...rtroute.Option) error {
-	return rtroute.Replace(c.nl, table, opts...)
+func (c *Client) RouteReplace(route *rtroute.Route) error {
+	return rtroute.Replace(c.nl, route)
 }
 
 // Rules returns a list of all the routing [rtrule.Rule] configured for the

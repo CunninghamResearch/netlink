@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net/netip"
 	"strings"
 
@@ -28,10 +29,6 @@ import (
 // References:
 //   - https://www.kernel.org/doc/html/latest/netlink/specs/rt-route.html
 type Route struct {
-	MsgType      uint16
-	Family       uint8
-	DstLen       uint8
-	SrcLen       uint8
 	TOS          uint8
 	Table        Table
 	Protocol     Protocol
@@ -57,17 +54,163 @@ type Route struct {
 	IPProto      uint8
 	Sport        uint16
 	Dport        uint16
+
+	msg uint16
+	dst int
+	src int
 }
 
 // MessageType returns "NewRoute" or "DelRoute" based on rtnetlink message
 // type.
-func (r *Route) MessageType() string {
-	switch r.MsgType {
+func (r Route) MessageType() string {
+	switch r.msg {
 	case unix.RTM_DELRULE:
 		return "DelRoute"
 	default:
 		return "NewRoute"
 	}
+}
+
+// MarshalAttributes marshals the Netlink attributes of [Route].
+func (r Route) MarshalAttributes(attrs *netlink.AttributeEncoder) error {
+	if r.Dst.IsValid() {
+		attrs.Addr(unix.RTA_DST, r.Dst.Addr())
+	}
+
+	if r.Src.IsValid() {
+		attrs.Addr(unix.RTA_SRC, r.Src.Addr())
+	}
+
+	if r.Iif != 0 {
+		if r.Iif < 1 || r.Iif > math.MaxInt32 {
+			return fmt.Errorf("iif: index exceeds int32, got %d", r.Iif)
+		}
+
+		attrs.Uint32(unix.RTA_IIF, uint32(r.Iif))
+	}
+
+	if r.Oif != 0 {
+		if r.Oif < 1 || r.Oif > math.MaxInt32 {
+			return fmt.Errorf("oif: index exceeds int32, got %d", r.Oif)
+		}
+
+		attrs.Uint32(unix.RTA_OIF, uint32(r.Oif))
+	}
+
+	if r.Gateway.IsValid() {
+		attrs.Addr(unix.RTA_GATEWAY, r.Gateway)
+	}
+
+	if r.Priority != 0 {
+		attrs.Uint32(unix.RTA_PRIORITY, r.Priority)
+	}
+
+	if r.PrefSrc.IsValid() {
+		attrs.Addr(unix.RTA_PREFSRC, r.PrefSrc)
+	}
+
+	if r.Flow != 0 {
+		attrs.Uint32(unix.RTA_FLOW, r.Flow)
+	}
+
+	if r.CacheInfo != nil {
+		if err := attrs.MarshalBytes(unix.RTA_CACHEINFO, r.CacheInfo); err != nil {
+			return fmt.Errorf("cache info: %w", err)
+		}
+	}
+
+	if r.Table != 0 {
+		attrs.Uint32(unix.RTA_TABLE, r.Table)
+	}
+
+	if r.Mark != 0 {
+		attrs.Uint32(unix.RTA_MARK, r.Mark)
+	}
+
+	if r.Pref != 0 {
+		attrs.Uint8(unix.RTA_PREF, r.Pref)
+	}
+
+	if r.EncapType != 0 {
+		attrs.Uint16(unix.RTA_ENCAP_TYPE, r.EncapType)
+	}
+
+	if r.Expires != 0 {
+		attrs.Uint32(unix.RTA_EXPIRES, r.Expires)
+	}
+
+	if r.UID != 0 {
+		attrs.Uint32(unix.RTA_UID, r.UID)
+	}
+
+	if r.TTLPropagate != 0 {
+		attrs.Uint8(unix.RTA_TTL_PROPAGATE, r.TTLPropagate)
+	}
+
+	if r.IPProto != 0 {
+		attrs.Uint8(unix.RTA_IP_PROTO, r.IPProto)
+	}
+
+	if r.Sport != 0 {
+		attrs.Uint16(unix.RTA_SPORT, r.Sport)
+	}
+
+	if r.Dport != 0 {
+		attrs.Uint16(unix.RTA_DPORT, r.Dport)
+	}
+
+	return nil
+}
+
+// MarshalNetlink marshals a [Route] to a Netlink message.
+func (r Route) MarshalNetlink(msg netlink.MessageEncoder) error {
+	info := rtMsg{
+		TOS:      r.TOS,
+		Protocol: r.Protocol,
+		Scope:    r.Scope,
+		Type:     r.Type,
+		Flags:    r.Flags,
+	}
+
+	if r.Dst.IsValid() {
+		if r.Dst.Addr().Is6() {
+			info.Family = unix.AF_INET6
+		} else {
+			info.Family = unix.AF_INET
+		}
+
+		info.DstLen = uint8(r.Dst.Bits()) //nolint
+	}
+
+	if r.Src.IsValid() {
+		if r.Src.Addr().Is6() {
+			info.Family = unix.AF_INET6
+		} else {
+			info.Family = unix.AF_INET
+		}
+
+		info.SrcLen = uint8(r.Src.Bits()) //nolint
+	}
+
+	if r.Gateway.IsValid() {
+		if r.Gateway.Is6() {
+			info.Family = unix.AF_INET6
+		} else {
+			info.Family = unix.AF_INET
+		}
+	}
+
+	err := info.write(msg)
+	if err != nil {
+		return fmt.Errorf("rtmsg: %w", err)
+	}
+
+	err = msg.Marshal(r)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // UnmarshalAttributes unmarshals the Netlink attributes for a single [Route].
@@ -77,12 +220,12 @@ func (r *Route) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 		case unix.RTA_DST:
 			ip, ok := attr.Addr()
 			if ok {
-				r.Dst = netip.PrefixFrom(ip, int(r.DstLen))
+				r.Dst = netip.PrefixFrom(ip, r.dst)
 			}
 		case unix.RTA_SRC:
 			ip, ok := attr.Addr()
 			if ok {
-				r.Src = netip.PrefixFrom(ip, int(r.SrcLen))
+				r.Src = netip.PrefixFrom(ip, r.src)
 			}
 		case unix.RTA_IIF:
 			r.Iif = int(attr.Int32())
@@ -136,7 +279,7 @@ func (r *Route) UnmarshalAttributes(attrs *netlink.AttributeDecoder) error {
 
 // UnmarshalNetlink unmarshals the Netlink message containing a [Route].
 func (r *Route) UnmarshalNetlink(msg netlink.MessageDecoder) error {
-	r.MsgType = msg.Header().Type
+	r.msg = msg.Header().Type
 
 	info := &rtMsg{}
 	err := info.read(msg)
@@ -144,9 +287,8 @@ func (r *Route) UnmarshalNetlink(msg netlink.MessageDecoder) error {
 		return fmt.Errorf("rtmsg: %w", err)
 	}
 
-	r.Family = info.Family
-	r.DstLen = info.DstLen
-	r.SrcLen = info.SrcLen
+	r.dst = int(info.DstLen)
+	r.src = int(info.SrcLen)
 	r.TOS = info.TOS
 
 	// may be overwritten if RTA_TABLE is set.
@@ -155,6 +297,7 @@ func (r *Route) UnmarshalNetlink(msg netlink.MessageDecoder) error {
 	r.Protocol = info.Protocol
 	r.Scope = info.Scope
 	r.Type = info.Type
+	r.Flags = info.Flags
 
 	err = msg.Unmarshal(r)
 	if err != nil {
@@ -194,7 +337,7 @@ type CacheInfo struct {
 }
 
 // AppendBinary appends a [CacheInfo] to bytes using the host byteorder.
-func (c *CacheInfo) AppendBinary(b []byte) ([]byte, error) {
+func (c CacheInfo) AppendBinary(b []byte) ([]byte, error) {
 	b = binary.NativeEndian.AppendUint32(b, c.ClntRef)
 	b = binary.NativeEndian.AppendUint32(b, c.LastUse)
 	b = binary.NativeEndian.AppendUint32(b, c.Expires)
@@ -205,7 +348,7 @@ func (c *CacheInfo) AppendBinary(b []byte) ([]byte, error) {
 }
 
 // MarshalBinary marshals a [CacheInfo] to bytes using the host byteorder.
-func (c *CacheInfo) MarshalBinary() ([]byte, error) {
+func (c CacheInfo) MarshalBinary() ([]byte, error) {
 	return c.AppendBinary(make([]byte, 0, 20))
 }
 

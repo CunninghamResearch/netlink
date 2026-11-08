@@ -16,83 +16,47 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Add is used to add a [Route] to a routing table, configured with one or more
-// [Option].
+// Add is used to add a [Route] to a routing table.
 //
 // If it already exists, [ErrExists] is returned.
 //
 // Equivalent: ip route add
-func Add(nl netlink.Client, table Table, opts ...Option) error {
-	req := &configure{info: rtMsg{Table: table}}
-
-	for i, opt := range opts {
-		err := opt(req)
-		if err != nil {
-			return fmt.Errorf("option %d: %w", i, err)
-		}
-	}
-
-	err := nl.Do(
-		unix.RTM_NEWROUTE,
-		unix.NLM_F_CREATE|unix.NLM_F_EXCL,
-		req,
-	)
+func Add(nl netlink.Client, route *Route) error {
+	err := nl.Do(unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, route)
 	if errors.Is(err, syscall.EEXIST) {
-		return &Error{Table: table, Inner: ErrExists}
+		return &Error{Table: route.Table, Inner: ErrExists}
 	} else if err != nil {
-		return &Error{Table: table, Inner: err}
+		return &Error{Table: route.Table, Inner: err}
 	}
 
 	return nil
 }
 
-// Change is used to replace an existing [Route] in a routing table, configured
-// with one or more [Option] equivalent to the options that would create it.
+// Change is used to replace an existing [Route] in a routing table, using the
+// same configuration that would create it.
 //
 // Equivalent: ip route change
-func Change(nl netlink.Client, table Table, opts ...Option) error {
-	req := &configure{info: rtMsg{Table: table}}
-
-	for i, opt := range opts {
-		err := opt(req)
-		if err != nil {
-			return fmt.Errorf("option %d: %w", i, err)
-		}
-	}
-
-	err := nl.Do(
-		unix.RTM_NEWROUTE,
-		unix.NLM_F_CREATE|unix.NLM_F_EXCL,
-		req,
-	)
+func Change(nl netlink.Client, route *Route) error {
+	err := nl.Do(unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, route)
 	if err != nil {
-		return &Error{Table: table, Inner: err}
+		return &Error{Table: route.Table, Inner: err}
 	}
 
 	return nil
 }
 
-// Delete removes a [Route] from a routing table, specified by the [Option]
-// used to create it.
+// Delete removes a [Route] from a routing table, using the same configuration
+// that would create it.
 //
 // If it does not exist, [ErrNotFound] is returned.
 //
 // Equivalent: ip route delete
-func Delete(nl netlink.Client, table Table, opts ...Option) error {
-	req := &configure{info: rtMsg{Table: table}}
-
-	for i, opt := range opts {
-		err := opt(req)
-		if err != nil {
-			return fmt.Errorf("option %d: %w", i, err)
-		}
-	}
-
-	err := nl.Do(unix.RTM_DELROUTE, 0, req)
+func Delete(nl netlink.Client, route *Route) error {
+	err := nl.Do(unix.RTM_DELROUTE, 0, route)
 	if errors.Is(err, syscall.ENOENT) {
-		return &Error{Table: table, Inner: ErrNotFound}
+		return &Error{Table: route.Table, Inner: ErrNotFound}
 	} else if err != nil {
-		return &Error{Table: table, Inner: err}
+		return &Error{Table: route.Table, Inner: err}
 	}
 
 	return nil
@@ -103,7 +67,7 @@ func Delete(nl netlink.Client, table Table, opts ...Option) error {
 //
 // A family or table of zero, gets all routes.
 //
-// Equivalent: ip route
+// Equivalent: ip route show table <table>
 func List(nl netlink.Client, family uint8, table Table) (Routes, error) {
 	routes := Routes{}
 
@@ -131,27 +95,13 @@ func List(nl netlink.Client, family uint8, table Table) (Routes, error) {
 }
 
 // Replace is used to add a new or replace an existing [Route] to a routing
-// table, configured with one or more [Option] equivalent to the options that
-// would create it.
+// table, using the same configuration that would create it.
 //
 // Equivalent: ip route replace
-func Replace(nl netlink.Client, table Table, opts ...Option) error {
-	req := &configure{info: rtMsg{Table: table}}
-
-	for i, opt := range opts {
-		err := opt(req)
-		if err != nil {
-			return fmt.Errorf("option %d: %w", i, err)
-		}
-	}
-
-	err := nl.Do(
-		unix.RTM_NEWROUTE,
-		unix.NLM_F_CREATE|unix.NLM_F_REPLACE|unix.NLM_F_EXCL,
-		req,
-	)
+func Replace(nl netlink.Client, route *Route) error {
+	err := nl.Do(unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_REPLACE|unix.NLM_F_EXCL, route)
 	if err != nil {
-		return &Error{Table: table, Inner: err}
+		return &Error{Table: route.Table, Inner: err}
 	}
 
 	return nil
