@@ -13,6 +13,7 @@ import (
 	"go.crhq.io/netlink/rtnetlink/rtaddr"
 	"go.crhq.io/netlink/rtnetlink/rtlink"
 	"go.crhq.io/netlink/rtnetlink/rtroute"
+	"go.crhq.io/netlink/rtnetlink/rtrule"
 
 	"golang.org/x/sys/unix"
 )
@@ -206,4 +207,31 @@ func (c *Client) RouteDelete(table rtroute.Table, opts ...rtroute.Option) error 
 // Equivalent: ip route replace
 func (c *Client) RouteReplace(table rtroute.Table, opts ...rtroute.Option) error {
 	return rtroute.Replace(c.nl, table, opts...)
+}
+
+// Rules returns a list of all the routing [rtrule.Rule] configured for the
+// given address family.
+//
+// The family may be zero to list all rules of all address families.
+//
+// Equivalent: ip rule
+func (c *Client) Rules(family uint8) (rtrule.Rules, error) {
+	return rtrule.List(c.nl, family)
+}
+
+// RuleAdd is used to create a new [rtrule.Rule] of the given configuration.
+//
+// If the rule already exists, [ErrExists] is returned.
+//
+// Equivalent: ip rule add
+func (c *Client) RuleAdd(rule *rtrule.Rule) error {
+	return rtrule.Add(c.nl, rule)
+}
+
+// RuleDelete is used to delete a [rtrule.Rule], given the same configuration
+// as used to create it.
+//
+// Equivalent: ip rule delete
+func (c *Client) RuleDelete(rule *rtrule.Rule) error {
+	return rtrule.Delete(c.nl, rule)
 }

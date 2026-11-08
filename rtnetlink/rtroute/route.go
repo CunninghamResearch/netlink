@@ -415,7 +415,7 @@ func (p Protocol) String() string {
 		return "eigrp"
 
 	default:
-		return fmt.Sprintf("RouteProtocol(%d)", p)
+		return fmt.Sprintf("Protocol(%d)", p)
 	}
 }
 
@@ -477,7 +477,7 @@ func (t Table) String() string {
 		return "local"
 
 	default:
-		return fmt.Sprintf("RouteTable(%d)", t)
+		return fmt.Sprintf("Table(%d)", t)
 	}
 }
 
