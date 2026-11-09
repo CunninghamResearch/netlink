@@ -48,6 +48,21 @@ func Delete(nl netlink.Client, rule *Rule) error {
 	return nil
 }
 
+// Flush is to delete all configured rules, including the default rules, for a
+// specific address family.
+//
+// The family may be zero to delete rules for all families.
+//
+// Equivalent: ip rule flush
+func Flush(nl netlink.Client, family uint8) error {
+	err := nl.Do(unix.RTM_DELRULE, 0, &fibRuleHdr{Family: family})
+	if err != nil {
+		return &Error{Inner: err}
+	}
+
+	return nil
+}
+
 // List returns a list of all the routing [Rule] configured for the given
 // address family.
 //

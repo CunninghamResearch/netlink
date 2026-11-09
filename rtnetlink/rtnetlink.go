@@ -219,3 +219,13 @@ func (c *Client) RuleAdd(rule *rtrule.Rule) error {
 func (c *Client) RuleDelete(rule *rtrule.Rule) error {
 	return rtrule.Delete(c.nl, rule)
 }
+
+// RuleFlush is to delete all configured rules, including the default rules,
+// for a specific address family.
+//
+// The family may be zero to delete rules for all families.
+//
+// Equivalent: ip rule flush
+func (c *Client) RuleFlush(family uint8) error {
+	return rtrule.Flush(c.nl, family)
+}
